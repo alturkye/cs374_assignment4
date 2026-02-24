@@ -115,6 +115,7 @@ int main(){
     struct sigaction SIGINT_action = {0};
     SIGINT_action.sa_handler = SIG_IGN;
     sigfillset(&SIGINT_action.sa_mask);
+    SIGINT_action.sa_flags = 0;
     sigaction(SIGINT, &SIGINT_action, NULL);
 
     char input[2048]; // max command length 
@@ -186,7 +187,7 @@ int main(){
                 if(cmd->input_file){
                     int fd = open(cmd->input_file, O_RDONLY);
                     if(fd == -1){
-                        perror("open");
+                        perror("cannot open file");
                         exit(1); 
                     }
                     dup2(fd, 0); 
@@ -203,7 +204,7 @@ int main(){
                     int fd = open(cmd->output_file, O_WRONLY | O_CREAT |
                             O_TRUNC, 0644);
                     if (fd == -1){
-                        perror("open");
+                        perror("cannot open file");
                         exit(1);
                     }
                     dup2(fd, 1);
