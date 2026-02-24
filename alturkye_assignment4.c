@@ -114,6 +114,7 @@ int main(){
     // parent should ignore sigint
     struct sigaction SIGINT_action = {0};
     SIGINT_action.sa_handler = SIG_IGN;
+    sigfillset(&SIGINT_action.sa_mask);
     sigaction(SIGINT, &SIGINT_action, NULL);
 
     char input[2048]; // max command length 
@@ -154,33 +155,50 @@ int main(){
         // execute builtin commands 
         if(strcmp(cmd->argv[0], "exit") == 0){
             // kill other processes before terminating 
+            kill(0, SIGTERM);
             exit(0);
         }
         else if (strcmp(cmd->argv[0], "cd") == 0){
-            if(cmd->argv[1] == NULL)
-                chdir(getenv("HOME"));
-            else
-                chdir(cmd->argv[1]);
+            handle_cd(cmd->argv[1]);
         }
         else if
             (strcmp(cmd->argv[0], "status") == 0){
-                // print last foreground exit status
-                printf("exit value %d\n", last_status);
+                // use macros to interpret the termination status 
+                if (WIFEXITED(last_status)){
+                    // normal exit 
+                    printf("exit value %d\n", WEXITSTATUS(last_status));
+                } else {
+                    // terminaton by a singal 
+                    printf("terminated by signal %d\n", 
+                                WTERMSIG(last_status));
+                }
                 fflush(stdout);
         }else {
             // fork() + exec() 
             pid_t spawnPid = fork(); 
             if(spawnPid == 0){
-                // in child, handle redirection 
-                if (cmd->input_file){
+                // handle sigint
+                struct sigaction SIGINT_action = {0};
+                SIGINT_action.sa_handler = SIG_DFL; //change bck to default
+                sigaction(SIGINT, &SIGINT_action, NULL);
+
+                // badfile case 
+                if(cmd->input_file){
                     int fd = open(cmd->input_file, O_RDONLY);
-                    if (fd == -1){
-                        perror("open"); 
-                        exit(1);
+                    if(fd == -1){
+                        perror("open");
+                        exit(1); 
                     }
+                    dup2(fd, 0); 
+                    close(fd); 
+                }
+                //default background input to /dev/null
+                else if(cmd->is_bg && !fg_only_mode){
+                    int fd = open("/dev/null", O_RDONLY);
                     dup2(fd, 0);
                     close(fd);
                 }
+                // output redirection
                 if (cmd->output_file){
                     int fd = open(cmd->output_file, O_WRONLY | O_CREAT |
                             O_TRUNC, 0644);
@@ -188,6 +206,12 @@ int main(){
                         perror("open");
                         exit(1);
                     }
+                    dup2(fd, 1);
+                    close(fd);
+                }
+                // default background ooutpuut to /dev/null
+                else if (cmd->is_bg && !fg_only_mode){
+                    int fd = open("/dev/null", O_WRONLY);
                     dup2(fd, 1);
                     close(fd);
                 }
